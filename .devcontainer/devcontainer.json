@@ -1,6 +1,13 @@
 {
+  "name": "OpenDuet Cloud",
   "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
-  }
+  },
+  "forwardPorts": [3010, 3001],
+  "portsAttributes": {
+    "3010": { "label": "OpenDuet App", "visibility": "public" },
+    "3001": { "label": "OpenDuet Server", "visibility": "public" }
+  },
+  "postStartCommand": "bash .devcontainer/setup.sh"
 }
