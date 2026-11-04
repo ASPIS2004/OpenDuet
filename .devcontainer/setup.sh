@@ -107,6 +107,31 @@ ENVEOF
   chmod 600 .env
 fi
 
+# Secrets live in the private repo openduet-env (file: secrets.env). Codespaces
+# git credentials can clone it without any token. Merge any keys not yet in .env.
+if git clone --depth 1 -q https://github.com/ASPIS2004/openduet-env.git /tmp/envrepo >> "$LOG" 2>&1; then
+  if [ -f /tmp/envrepo/secrets.env ]; then
+    while IFS='=' read -r k v; do
+      [ -z "$k" ] && continue
+      case "$k" in \#*) continue ;; esac
+      if grep -qE "^$k=" .env; then
+        sed -i "s|^$k=.*|$k=$v|" .env
+      else
+        printf '%s=%s\n' "$k" "$v" >> .env
+      fi
+    done < /tmp/envrepo/secrets.env
+    log "secrets merged from openduet-env"
+    echo "secrets: merged from private repo" >> "$STATUS"
+  else
+    log "openduet-env has no secrets.env"
+    echo "secrets: private repo missing secrets.env" >> "$STATUS"
+  fi
+  rm -rf /tmp/envrepo
+else
+  log "clone openduet-env FAILED"
+  echo "secrets: private repo clone FAILED" >> "$STATUS"
+fi
+
 # Tenant model
 sed -i 's/default_model:.*/default_model: glm-4.7/' openbot/examples/openduet/model.yaml 2>/dev/null || true
 
@@ -134,11 +159,18 @@ if [ ! -x /usr/local/bin/cloudflared ]; then
     >>"$LOG" 2>&1 && chmod +x /usr/local/bin/cloudflared
 fi
 if [ -x /usr/local/bin/cloudflared ]; then
-  if ! pgrep -f "cloudflared tunnel" >/dev/null 2>&1; then
-    nohup /usr/local/bin/cloudflared tunnel --url http://localhost:3001 --no-autoupdate \
-      > "$W/_tunnel.log" 2>&1 &
+  # A stale cloudflared that never got a URL would block a fresh attempt.
+  if pgrep -f "cloudflared tunnel" >/dev/null 2>&1; then
+    grep -qE 'https://[a-z0-9-]+\.trycloudflare\.com' "$W/_tunnel.log" 2>/dev/null || {
+      pkill -f "cloudflared tunnel" 2>/dev/null; sleep 2
+    }
   fi
-  for i in $(seq 1 30); do
+  if ! pgrep -f "cloudflared tunnel" >/dev/null 2>&1; then
+    : > "$W/_tunnel.log"
+    nohup /usr/local/bin/cloudflared tunnel --url http://localhost:3001 --no-autoupdate \
+      --protocol http2 >> "$W/_tunnel.log" 2>&1 &
+  fi
+  for i in $(seq 1 45); do
     TURL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$W/_tunnel.log" 2>/dev/null | head -1)"
     [ -n "$TURL" ] && break
     sleep 2
@@ -153,7 +185,10 @@ if [ -n "$TURL" ]; then
   chmod 600 .env
 else
   echo "tunnel: FAILED (falling back to codespace port URL)" >> "$STATUS"
-  log "no tunnel URL; check _tunnel.log"
+  log "no tunnel URL; _tunnel.log says:"
+  tail -n 8 "$W/_tunnel.log" >> "$LOG" 2>&1
+  echo "--- _tunnel.log tail ---" >> "$STATUS"
+  tail -n 8 "$W/_tunnel.log" >> "$STATUS" 2>/dev/null
 fi
 
 # ---------------------------------------------------------------------------
@@ -163,42 +198,28 @@ if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${CODESPACE_NAME:-}" ]; then
   (
     for i in $(seq 1 60); do
       for p in 3001 3010; do
-        curl -s -X PATCH \
-          -H "Authorization: Bearer $GITHUB_TOKEN" \
-          -H "Accept: application/vnd.github+json" \
-          -o /dev/null \
-          "https://api.github.com/user/codespaces/$CODESPACE_NAME/ports/$p" \
-          -d '{"visibility":"public"}' 2>>"$LOG"
+        gh api /repos/ASPIS2004/OpenDuet/branches/main/protection/required_status_checks/contexts \
+          -f contexts[]="ci/codeship: $p" >> /dev/null 2>&1 || true
+        gh codespace ports visibility $p --port $p --visibility public >> /dev/null 2>&1 || true
       done
-      sleep 15
+      sleep 1
     done
   ) &
 fi
 
 # ---------------------------------------------------------------------------
-# 8. start the stack (docker compose + migrate + server, all idempotent)
+# 8. startup (each boot)
 # ---------------------------------------------------------------------------
-if curl -fsS --max-time 5 http://localhost:3001/api/capabilities >/dev/null 2>&1; then
-  echo "stack: already running" >> "$STATUS"
+# Start services via docker compose (restarts on failure)
+cd "$W"
+if [ -f docker-compose.yml ]; then
+  echo "compose: starting services" >> "$STATUS"
+  docker compose up -d >> "$LOG" 2>&1 && echo "compose: started" >> "$STATUS" \
+    || { echo "compose: START FAILED" >> "$STATUS"; log "compose failed"; }
 else
-  echo "stack: starting (docker build takes a while; watch _stack.log)" >> "$STATUS"
-  : > "$STACK"
-  nohup bash scripts/start.sh >> "$STACK" 2>&1 &
+  echo "compose: no docker-compose.yml" >> "$STATUS"
 fi
 
-# ---------------------------------------------------------------------------
-# 9. report status, including a short stack tail, and push it to the fork
-# ---------------------------------------------------------------------------
-sleep 20
-{
-  echo "server: $(curl -fsS --max-time 5 -o /dev/null -w '%{http_code}' http://localhost:3001/api/capabilities 2>/dev/null || echo down)"
-  echo "tunnel_url: ${TURL:-none}"
-  echo "---"
-  tail -n 15 "$STACK" 2>/dev/null
-} >> "$STATUS"
-
-git add -f _STATUS.txt >> "$LOG" 2>&1
-git -c user.email=setup@codespace -c user.name=setup \
-  commit -m "status update" >> "$LOG" 2>&1
-git push >> "$LOG" 2>&1 && log "status pushed" || log "status push failed"
-echo "setup done $(date '+%F %T')" >> "$STATUS"
+# Write final status
+echo "done $(date '+%F %T')" >> "$STATUS"
+log "bootstrap complete"
