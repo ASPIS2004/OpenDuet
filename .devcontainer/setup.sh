@@ -1,24 +1,38 @@
 #!/usr/bin/env bash
-# OpenDuet Codespace bootstrap. Idempotent; safe to rerun on every start.
-# Everything it learns is written into the workspace, so it can be read without a terminal:
-#   _STATUS.txt   short human-readable state
-#   _setup.log    this script's log
-#   _stack.log    the stack's stdout/stderr (docker compose build, bun, app)
+# OpenDuet Codespace bootstrap — production mode + Cloudflare quick tunnel.
+#
+# Why production mode: in dev mode the browser opens its websocket on
+# wss://<current-host>:3001, which no port-forwarding or tunnel setup can serve.
+# With APP_DIST_DIR set, the API server serves the built app on 3001 itself and
+# everything is same-origin, so ONE public URL is all the product needs.
+#
+# Idempotent; safe to rerun. Everything it learns lands in _STATUS.txt, which it
+# also pushes to the fork so it can be read from outside without a terminal.
 set -uo pipefail
 cd /workspaces/OpenDuet 2>/dev/null || cd "$(pwd)"
 W="$(pwd -P)"
 LOG="$W/_setup.log"
 STACK="$W/_stack.log"
 STATUS="$W/_STATUS.txt"
-log(){ echo "[$(date +%T)] $*" | tee -a "$LOG"; }
-status(){ echo "$*" >> "$STATUS"; }
+log(){ echo "[$(date +%T)] $*" >> "$LOG"; }
 
 : > "$STATUS"
-log "setup start in $W"
-status "setup started $(date)"
+
+# Always take the newest bootstrap from GitHub before doing anything. Local
+# status-only commits are expendable: rebase them on, or drop them and reset.
+git fetch origin main >> "$LOG" 2>&1 || log "git fetch failed (continuing offline)"
+if git rev-parse -q --verify origin/main >/dev/null 2>&1; then
+  git rebase origin/main >> "$LOG" 2>&1 || {
+    log "rebase failed; resetting tracked files to origin/main"
+    git reset --hard origin/main >> "$LOG" 2>&1
+  }
+fi
+
+echo "run $(date '+%F %T')" >> "$STATUS"
+echo "codespace ${CODESPACE_NAME:-unknown}" >> "$STATUS"
 
 # ---------------------------------------------------------------------------
-# 1. docker (docker-in-docker needs a while to come up on a fresh codespace)
+# 1. docker (docker-in-docker needs a while on a fresh codespace)
 # ---------------------------------------------------------------------------
 ok=""
 for i in $(seq 1 150); do
@@ -26,21 +40,41 @@ for i in $(seq 1 150); do
   sleep 2
 done
 if [ -n "$ok" ]; then
-  log "docker ready"
-  status "docker: ready"
+  echo "docker: ready" >> "$STATUS"
 else
-  log "docker NOT ready after 300s"
-  status "docker: NOT READY"
+  echo "docker: NOT READY" >> "$STATUS"
+  log "docker not ready after 300s; continuing anyway"
 fi
 
 # ---------------------------------------------------------------------------
-# 2. .env  (secrets arrive as Codespace secrets, injected as environment vars)
+# 2. bun
+# ---------------------------------------------------------------------------
+if ! command -v bun >/dev/null 2>&1; then
+  [ -x "$HOME/.bun/bin/bun" ] && export PATH="$HOME/.bun/bin:$PATH"
+  command -v bun >/dev/null 2>&1 || {
+    curl -fsSL https://bun.sh/install 2>>"$LOG" | bash >>"$LOG" 2>&1
+    export PATH="$HOME/.bun/bin:$PATH"
+  }
+fi
+command -v bun >/dev/null 2>&1 && echo "bun: $(bun --version 2>/dev/null)" >> "$STATUS" || echo "bun: MISSING" >> "$STATUS"
+
+# ---------------------------------------------------------------------------
+# 3. dependencies (openbot workspace)
+# ---------------------------------------------------------------------------
+if [ ! -d openbot/node_modules ]; then
+  echo "deps: installing (bun install, several minutes)" >> "$STATUS"
+  bun install --cwd openbot >> "$LOG" 2>&1 || echo "deps: INSTALL FAILED" >> "$STATUS"
+fi
+[ -d openbot/node_modules ] && echo "deps: present" >> "$STATUS"
+
+# ---------------------------------------------------------------------------
+# 4. .env — secrets arrive as Codespace secrets, injected as environment vars
 # ---------------------------------------------------------------------------
 if [ ! -f .env ]; then
   log "writing .env"
-  cat > .env <<'ENVEOF'
+  cat > .env <<ENVEOF
 DATABASE_URL=postgres://openbot:openbot@localhost:5432/openbot
-KEY_ENCRYPTION_KEY=REPLACE_ME
+KEY_ENCRYPTION_KEY=$(openssl rand -base64 32)
 PORT=3001
 SERVER_PORT=3001
 TENANT_PACKAGE_DIR=../examples/openduet
@@ -51,9 +85,9 @@ SUPERVISOR_IMAGE=openduet-supervisor:latest
 BOT_IMAGE=openduet-agent-bot:latest
 LANGGRAPH_IMAGE=openduet-agent-langgraph:latest
 OPENBOT_SINGLE_USER=true
-OPENBOT_PUBLIC_URL=https://NAME_ME-3001.app.github.dev
-OPENBOT_APP_URL=https://NAME_ME-3010.app.github.dev
-TRUSTED_ORIGINS=https://NAME_ME-3010.app.github.dev
+OPENBOT_PUBLIC_URL=https://${CODESPACE_NAME:-NAME}-3001.app.github.dev
+OPENBOT_APP_URL=https://${CODESPACE_NAME:-NAME}-3001.app.github.dev
+TRUSTED_ORIGINS=https://${CODESPACE_NAME:-NAME}-3001.app.github.dev
 INTELLIGENCE_API_URL=https://api.intelligence.copilotkit.ai
 INTELLIGENCE_GATEWAY_WS_URL=wss://realtime.intelligence.copilotkit.ai
 AGENT_STALL_TIMEOUT_MS=60000
@@ -61,106 +95,110 @@ OPENAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 BOT_MODEL=glm-4.7
 AGENT_BOT_MODEL=glm-4.7
 AGENT_COMPUTER_URL=http://localhost:4100
+APP_DIST_DIR=$W/openbot/app/dist
 ENVEOF
   missing=""
   for k in OPENAI_API_KEY INTELLIGENCE_API_KEY CPK_INTELLIGENCE_API_KEY CPK_TELEMETRY_ID; do
     v="${!k:-}"
     if [ -n "$v" ]; then printf '%s=%s\n' "$k" "$v" >> .env; else missing="$missing $k"; fi
   done
-  sed -i "s|^KEY_ENCRYPTION_KEY=.*|KEY_ENCRYPTION_KEY=$(openssl rand -base64 32)|" .env
+  [ -n "$missing" ] && { log "MISSING SECRETS:$missing"; echo "secrets: MISSING$missing" >> "$STATUS"; } \
+                     || { echo "secrets: all present" >> "$STATUS"; }
   chmod 600 .env
-  if [ -n "$missing" ]; then
-    log "MISSING SECRETS:$missing"
-    status "secrets: MISSING$missing"
-  else
-    log "all secrets present"
-    status "secrets: all present"
-  fi
 fi
 
-# ---------------------------------------------------------------------------
-# 3. public URLs for this codespace
-# ---------------------------------------------------------------------------
-if [ -n "${CODESPACE_NAME:-}" ]; then
-  sed -i -e "s|NAME_ME|$CODESPACE_NAME|g" -e "s|CHANGE_ME|$CODESPACE_NAME|g" .env
-  log "public URLs point at $CODESPACE_NAME"
-else
-  log "CODESPACE_NAME is unset"
-  status "codespace name: UNKNOWN"
-fi
-
-# ---------------------------------------------------------------------------
-# 4. tenant model + vite allowed hosts
-# ---------------------------------------------------------------------------
+# Tenant model
 sed -i 's/default_model:.*/default_model: glm-4.7/' openbot/examples/openduet/model.yaml 2>/dev/null || true
-if ! grep -q 'allowedHosts' openbot/app/vite.config.ts 2>/dev/null; then
-  sed -i 's/strictPort: true,/strictPort: true, allowedHosts: true,/' openbot/app/vite.config.ts
-  log "patched vite allowedHosts"
+
+# ---------------------------------------------------------------------------
+# 5. build the app (vite build) — once
+# ---------------------------------------------------------------------------
+if [ ! -f openbot/app/dist/index.html ]; then
+  echo "app: building (vite build, several minutes)" >> "$STATUS"
+  ( cd openbot \
+    && bun run generate:app-config >> "$LOG" 2>&1 \
+    && bun run --filter app build >> "$LOG" 2>&1 ) \
+    && echo "app: built" >> "$STATUS" \
+    || echo "app: BUILD FAILED (see _setup.log)" >> "$STATUS"
+else
+  echo "app: dist present" >> "$STATUS"
 fi
 
 # ---------------------------------------------------------------------------
-# 5. bun
+# 6. Cloudflare quick tunnel (no account) — the URL that works from China
 # ---------------------------------------------------------------------------
-if ! command -v bun >/dev/null 2>&1; then
-  if [ -x "$HOME/.bun/bin/bun" ]; then
-    export PATH="$HOME/.bun/bin:$PATH"
-  else
-    log "installing bun"
-    curl -fsSL https://bun.sh/install 2>>"$LOG" | bash >>"$LOG" 2>&1
-    export PATH="$HOME/.bun/bin:$PATH"
+TURL=""
+if [ ! -x /usr/local/bin/cloudflared ]; then
+  curl -fsSL -o /usr/local/bin/cloudflared \
+    https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+    >>"$LOG" 2>&1 && chmod +x /usr/local/bin/cloudflared
+fi
+if [ -x /usr/local/bin/cloudflared ]; then
+  if ! pgrep -f "cloudflared tunnel" >/dev/null 2>&1; then
+    nohup /usr/local/bin/cloudflared tunnel --url http://localhost:3001 --no-autoupdate \
+      > "$W/_tunnel.log" 2>&1 &
   fi
+  for i in $(seq 1 30); do
+    TURL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$W/_tunnel.log" 2>/dev/null | head -1)"
+    [ -n "$TURL" ] && break
+    sleep 2
+  done
 fi
-command -v bun >/dev/null 2>&1 && log "bun: $(bun --version 2>/dev/null)" || { log "bun MISSING"; status "bun: MISSING"; }
+if [ -n "$TURL" ]; then
+  echo "tunnel: $TURL" >> "$STATUS"
+  # Point every public URL at the tunnel (drop old lines, re-append).
+  grep -vE '^(OPENBOT_PUBLIC_URL|OPENBOT_APP_URL|TRUSTED_ORIGINS)=' .env > .env.tmp 2>/dev/null || cp .env .env.tmp
+  printf 'OPENBOT_PUBLIC_URL=%s\nOPENBOT_APP_URL=%s\nTRUSTED_ORIGINS=%s\n' "$TURL" "$TURL" "$TURL" >> .env.tmp
+  mv .env.tmp .env
+  chmod 600 .env
+else
+  echo "tunnel: FAILED (falling back to codespace port URL)" >> "$STATUS"
+  log "no tunnel URL; check _tunnel.log"
+fi
 
 # ---------------------------------------------------------------------------
-# 6. make 3010/3001 public, retrying in the background (ports only exist once
-#    something listens, and GitHub forgets visibility after a restart)
+# 7. make the codespace ports public too (best-effort fallback)
 # ---------------------------------------------------------------------------
 if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${CODESPACE_NAME:-}" ]; then
   (
-    for i in $(seq 1 120); do
-      for p in 3010 3001; do
+    for i in $(seq 1 60); do
+      for p in 3001 3010; do
         curl -s -X PATCH \
           -H "Authorization: Bearer $GITHUB_TOKEN" \
           -H "Accept: application/vnd.github+json" \
-          -o /dev/null -w "%{http_code} $p\n" \
+          -o /dev/null \
           "https://api.github.com/user/codespaces/$CODESPACE_NAME/ports/$p" \
-          -d '{"visibility":"public"}' >> "$LOG" 2>&1
+          -d '{"visibility":"public"}' 2>>"$LOG"
       done
-      sleep 10
+      sleep 15
     done
   ) &
-  log "port-visibility loop started"
-else
-  log "no GITHUB_TOKEN; skipping port visibility loop"
-  status "port visibility: skipped"
 fi
 
 # ---------------------------------------------------------------------------
-# 7. is the stack already up?
+# 8. start the stack (docker compose + migrate + server, all idempotent)
 # ---------------------------------------------------------------------------
 if curl -fsS --max-time 5 http://localhost:3001/api/capabilities >/dev/null 2>&1; then
-  log "server already answering; not restarting the stack"
-  status "stack: already running"
+  echo "stack: already running" >> "$STATUS"
 else
-  # Anything still building from a previous attempt would hold the compose lock.
-  log "starting the stack (log: $STACK)"
-  status "stack: starting (watch _stack.log)"
+  echo "stack: starting (docker build takes a while; watch _stack.log)" >> "$STATUS"
   : > "$STACK"
   nohup bash scripts/start.sh >> "$STACK" 2>&1 &
-  log "stack launched, pid $!"
 fi
 
 # ---------------------------------------------------------------------------
-# 8. final snapshot
+# 9. report status, including a short stack tail, and push it to the fork
 # ---------------------------------------------------------------------------
+sleep 20
 {
-  echo "--- docker containers ---"
-  docker compose -f openbot/docker-compose.yml ps 2>&1 | tail -n 15
-  echo "--- listeners on 3001/3010 ---"
-  (ss -ltnp 2>/dev/null || netstat -ltnp 2>/dev/null) | grep -E ':(3001|3010)' || echo "none"
-  echo "--- last 20 lines of _stack.log ---"
-  tail -n 20 "$STACK" 2>/dev/null
-} >> "$LOG" 2>&1
-log "setup done"
-status "setup done $(date)"
+  echo "server: $(curl -fsS --max-time 5 -o /dev/null -w '%{http_code}' http://localhost:3001/api/capabilities 2>/dev/null || echo down)"
+  echo "tunnel_url: ${TURL:-none}"
+  echo "---"
+  tail -n 15 "$STACK" 2>/dev/null
+} >> "$STATUS"
+
+git add -f _STATUS.txt >> "$LOG" 2>&1
+git -c user.email=setup@codespace -c user.name=setup \
+  commit -m "status update" >> "$LOG" 2>&1
+git push >> "$LOG" 2>&1 && log "status pushed" || log "status push failed"
+echo "setup done $(date '+%F %T')" >> "$STATUS"
