@@ -198,28 +198,42 @@ if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${CODESPACE_NAME:-}" ]; then
   (
     for i in $(seq 1 60); do
       for p in 3001 3010; do
-        gh api /repos/ASPIS2004/OpenDuet/branches/main/protection/required_status_checks/contexts \
-          -f contexts[]="ci/codeship: $p" >> /dev/null 2>&1 || true
-        gh codespace ports visibility $p --port $p --visibility public >> /dev/null 2>&1 || true
+        curl -s -X PATCH \
+          -H "Authorization: Bearer $GITHUB_TOKEN" \
+          -H "Accept: application/vnd.github+json" \
+          -o /dev/null \
+          "https://api.github.com/user/codespaces/$CODESPACE_NAME/ports/$p" \
+          -d '{"visibility":"public"}' 2>>"$LOG"
       done
-      sleep 1
+      sleep 15
     done
   ) &
 fi
 
 # ---------------------------------------------------------------------------
-# 8. startup (each boot)
+# 8. start the stack (docker compose + migrate + server, all idempotent)
 # ---------------------------------------------------------------------------
-# Start services via docker compose (restarts on failure)
-cd "$W"
-if [ -f docker-compose.yml ]; then
-  echo "compose: starting services" >> "$STATUS"
-  docker compose up -d >> "$LOG" 2>&1 && echo "compose: started" >> "$STATUS" \
-    || { echo "compose: START FAILED" >> "$STATUS"; log "compose failed"; }
+if curl -fsS --max-time 5 http://localhost:3001/api/capabilities >/dev/null 2>&1; then
+  echo "stack: already running" >> "$STATUS"
 else
-  echo "compose: no docker-compose.yml" >> "$STATUS"
+  echo "stack: starting (docker build takes a while; watch _stack.log)" >> "$STATUS"
+  : > "$STACK"
+  nohup bash scripts/start.sh >> "$STACK" 2>&1 &
 fi
 
-# Write final status
-echo "done $(date '+%F %T')" >> "$STATUS"
-log "bootstrap complete"
+# ---------------------------------------------------------------------------
+# 9. report status, including a short stack tail, and push it to the fork
+# ---------------------------------------------------------------------------
+sleep 20
+{
+  echo "server: $(curl -fsS --max-time 5 -o /dev/null -w '%{http_code}' http://localhost:3001/api/capabilities 2>/dev/null || echo down)"
+  echo "tunnel_url: ${TURL:-none}"
+  echo "---"
+  tail -n 15 "$STACK" 2>/dev/null
+} >> "$STATUS"
+
+git add -f _STATUS.txt >> "$LOG" 2>&1
+git -c user.email=setup@codespace -c user.name=setup \
+  commit -m "status update" >> "$LOG" 2>&1
+git push >> "$LOG" 2>&1 && log "status pushed" || log "status push failed"
+echo "setup done $(date '+%F %T')" >> "$STATUS"
