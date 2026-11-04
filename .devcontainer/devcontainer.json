@@ -9,5 +9,6 @@
     "3010": { "label": "OpenDuet App", "visibility": "public" },
     "3001": { "label": "OpenDuet Server", "visibility": "public" }
   },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
   "postStartCommand": "bash .devcontainer/setup.sh"
 }
