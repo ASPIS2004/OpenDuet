@@ -1,0 +1,21 @@
+run 2026-11-04 12:48:21
+codespace congenial-carnival-96w7wjgxxrg4f9597
+docker: ready
+bun: 1.4.4
+deps: installing (bun install, several minutes)
+deps: present
+secrets: MISSING OPENAI_API_KEY INTELLIGENCE_API_KEY CPK_INTELLIGENCE_API_KEY CPK_TELEMETRY_ID
+app: building (vite build, several minutes)
+app: built
+tunnel: FAILED (falling back to codespace port URL)
+stack: starting (docker build takes a while; watch _stack.log)
+server: 000down
+tunnel_url: none
+---
+[2mGenerated MANAGED_AGENT_TOKEN and wrote it to .env.[0m
+[2mGenerated AGENT_TOOL_TOKEN and wrote it to .env.[0m
+
+OpenDuet
+========
+[2m1/4  Docker services[0m
+time="2026-11-04T12:50:07Z" level=warning msg="The \"OPENAI_API_KEY\" variable is not set. Defaulting to a blank string."
