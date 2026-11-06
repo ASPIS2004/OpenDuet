@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# OpenDuet Codespace bootstrap — production mode + Cloudflare quick tunnel.
+# OpenDuet Codespace bootstrap — production mode + Cloudflare quick tunnel. (v5)
 #
-# Why production mode: in dev mode the browser opens its websocket on
-# wss://<current-host>:3001, which no port-forwarding or tunnel setup can serve.
-# With APP_DIST_DIR set, the API server serves the built app on 3001 itself and
-# everything is same-origin, so ONE public URL is all the product needs.
-#
-# Idempotent; safe to rerun. Everything it learns lands in _STATUS.txt, which it
-# also pushes to the fork so it can be read from outside without a terminal.
+# v5 changes:
+#   - secrets: merge from env vars every run; private-repo clone with error
+#     reporting + gh api fallback; final per-key summary in _STATUS.txt
+#   - tunnel: log cloudflared version; fuller log tail on failure
+#   - db: one-time volume reset to fix "Migrations did not apply"
 set -uo pipefail
 cd /workspaces/OpenDuet 2>/dev/null || cd "$(pwd)"
 W="$(pwd -P)"
@@ -68,7 +66,7 @@ fi
 [ -d openbot/node_modules ] && echo "deps: present" >> "$STATUS"
 
 # ---------------------------------------------------------------------------
-# 4. .env — secrets arrive as Codespace secrets, injected as environment vars
+# 4. .env — base config
 # ---------------------------------------------------------------------------
 if [ ! -f .env ]; then
   log "writing .env"
@@ -97,19 +95,26 @@ AGENT_BOT_MODEL=glm-4.7
 AGENT_COMPUTER_URL=http://localhost:4100
 APP_DIST_DIR=$W/openbot/app/dist
 ENVEOF
-  missing=""
-  for k in OPENAI_API_KEY INTELLIGENCE_API_KEY CPK_INTELLIGENCE_API_KEY CPK_TELEMETRY_ID; do
-    v="${!k:-}"
-    if [ -n "$v" ]; then printf '%s=%s\n' "$k" "$v" >> .env; else missing="$missing $k"; fi
-  done
-  [ -n "$missing" ] && { log "MISSING SECRETS:$missing"; echo "secrets: MISSING$missing" >> "$STATUS"; } \
-                     || { echo "secrets: all present" >> "$STATUS"; }
   chmod 600 .env
 fi
 
-# Secrets live in the private repo openduet-env (file: secrets.env). Codespaces
-# git credentials can clone it without any token. Merge any keys not yet in .env.
-if git clone --depth 1 -q https://github.com/ASPIS2004/openduet-env.git /tmp/envrepo >> "$LOG" 2>&1; then
+# 4a. merge secrets from environment (Codespace user secrets) — every run
+for k in OPENAI_API_KEY INTELLIGENCE_API_KEY CPK_INTELLIGENCE_API_KEY CPK_TELEMETRY_ID; do
+  v="${!k:-}"
+  [ -z "$v" ] && continue
+  if grep -qE "^$k=..+" .env; then
+    continue
+  fi
+  if grep -qE "^$k=" .env; then
+    sed -i "s|^$k=.*|$k=$v|" .env
+  else
+    printf '%s=%s\n' "$k" "$v" >> .env
+  fi
+  log "secret $k merged from environment"
+done
+
+# 4b. secrets from private repo openduet-env (file: secrets.env), with gh fallback
+if git clone --depth 1 -q https://github.com/ASPIS2004/openduet-env.git /tmp/envrepo 2>/tmp/clone_err; then
   if [ -f /tmp/envrepo/secrets.env ]; then
     while IFS='=' read -r k v; do
       [ -z "$k" ] && continue
@@ -128,8 +133,37 @@ if git clone --depth 1 -q https://github.com/ASPIS2004/openduet-env.git /tmp/env
   fi
   rm -rf /tmp/envrepo
 else
-  log "clone openduet-env FAILED"
-  echo "secrets: private repo clone FAILED" >> "$STATUS"
+  CE="$(tail -n 2 /tmp/clone_err 2>/dev/null | tr '\n' ' ' | cut -c1-160)"
+  log "clone openduet-env FAILED: $CE"
+  echo "secrets: private repo clone FAILED: $CE" >> "$STATUS"
+  rm -f /tmp/clone_err
+  if command -v gh >/dev/null 2>&1 \
+     && gh api repos/ASPIS2004/openduet-env/contents/secrets.env --jq '.content' 2>>"$LOG" \
+     | base64 -d > /tmp/secrets.env 2>>"$LOG" && [ -s /tmp/secrets.env ]; then
+    while IFS='=' read -r k v; do
+      [ -z "$k" ] && continue
+      case "$k" in \#*) continue ;; esac
+      if grep -qE "^$k=" .env; then
+        sed -i "s|^$k=.*|$k=$v|" .env
+      else
+        printf '%s=%s\n' "$k" "$v" >> .env
+      fi
+    done < /tmp/secrets.env
+    log "secrets merged via gh api"
+    echo "secrets: merged via gh api" >> "$STATUS"
+  fi
+  rm -f /tmp/secrets.env
+fi
+
+# 4c. final secrets summary
+sm=""
+for k in OPENAI_API_KEY INTELLIGENCE_API_KEY CPK_INTELLIGENCE_API_KEY CPK_TELEMETRY_ID; do
+  grep -qE "^$k=..+" .env || sm="$sm $k"
+done
+if [ -z "$sm" ]; then
+  echo "secrets: ALL SET" >> "$STATUS"
+else
+  echo "secrets: STILL MISSING$sm" >> "$STATUS"
 fi
 
 # Tenant model
@@ -159,6 +193,7 @@ if [ ! -x /usr/local/bin/cloudflared ]; then
     >>"$LOG" 2>&1 && chmod +x /usr/local/bin/cloudflared
 fi
 if [ -x /usr/local/bin/cloudflared ]; then
+  echo "cloudflared: $(/usr/local/bin/cloudflared --version 2>&1 | head -1 | cut -c1-60)" >> "$STATUS"
   # A stale cloudflared that never got a URL would block a fresh attempt.
   if pgrep -f "cloudflared tunnel" >/dev/null 2>&1; then
     grep -qE 'https://[a-z0-9-]+\.trycloudflare\.com' "$W/_tunnel.log" 2>/dev/null || {
@@ -175,6 +210,8 @@ if [ -x /usr/local/bin/cloudflared ]; then
     [ -n "$TURL" ] && break
     sleep 2
   done
+else
+  echo "cloudflared: DOWNLOAD FAILED" >> "$STATUS"
 fi
 if [ -n "$TURL" ]; then
   echo "tunnel: $TURL" >> "$STATUS"
@@ -186,9 +223,9 @@ if [ -n "$TURL" ]; then
 else
   echo "tunnel: FAILED (falling back to codespace port URL)" >> "$STATUS"
   log "no tunnel URL; _tunnel.log says:"
-  tail -n 8 "$W/_tunnel.log" >> "$LOG" 2>&1
+  tail -n 15 "$W/_tunnel.log" >> "$LOG" 2>&1
   echo "--- _tunnel.log tail ---" >> "$STATUS"
-  tail -n 8 "$W/_tunnel.log" >> "$STATUS" 2>/dev/null
+  tail -n 15 "$W/_tunnel.log" >> "$STATUS" 2>/dev/null
 fi
 
 # ---------------------------------------------------------------------------
@@ -213,6 +250,13 @@ fi
 # ---------------------------------------------------------------------------
 # 8. start the stack (docker compose + migrate + server, all idempotent)
 # ---------------------------------------------------------------------------
+# One-time DB volume reset: fixes "Migrations did not apply" from a stale
+# postgres volume created by earlier failed runs. Guarded by marker file.
+if [ ! -f .db_reset_done ]; then
+  ( cd "$W" && docker compose down -v >> "$LOG" 2>&1 || true )
+  touch .db_reset_done
+  echo "db: volume reset (one-time)" >> "$STATUS"
+fi
 if curl -fsS --max-time 5 http://localhost:3001/api/capabilities >/dev/null 2>&1; then
   echo "stack: already running" >> "$STATUS"
 else
