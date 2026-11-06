@@ -107,3 +107,23 @@ OpenDuet
 ========
 [2m1/4  Docker services[0m
 time="2026-11-06T06:15:34Z" level=warning msg="The \"OPENAI_API_KEY\" variable is not set. Defaulting to a blank string."
+run 2026-11-06 06:30:06
+codespace congenial-carnival-96w7wjgxxrg4f9597
+docker: ready
+bun: 1.4.4
+deps: present
+secrets: private repo clone FAILED
+app: dist present
+tunnel: FAILED (falling back to codespace port URL)
+--- _tunnel.log tail ---
+stack: starting (docker build takes a while; watch _stack.log)
+server: 000down
+tunnel_url: none
+---
+
+OpenDuet
+========
+[2m1/4  Docker services[0m
+time="2026-11-06T06:30:07Z" level=warning msg="The \"OPENAI_API_KEY\" variable is not set. Defaulting to a blank string."
+[31m  Migrations did not apply. The database is not the schema this server expects.[0m
+[31m  Log: /workspaces/OpenDuet/openbot/.logs/migrate.log[0m
