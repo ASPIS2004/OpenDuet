@@ -286,22 +286,29 @@ git -c user.email=setup@codespace -c user.name=setup \
 git push >> "$LOG" 2>&1 && log "status pushed" || log "status push failed"
 echo "setup done $(date '+%F %T')" >> "$STATUS"
 
-# v8: synchronous diagnostics snapshot (server needs minutes; wait then capture)
+# v9: detached diagnostics — nohup so it survives lifecycle-command exit
+cat > "$W/_diag9.sh" <<'DIAGEOF'
+#!/usr/bin/env bash
+cd /workspaces/OpenDuet
 sleep 240
 {
-  echo "=== v8 diag $(date '+%T') ==="
+  echo "=== v9 diag $(date '+%T') ==="
   echo "listeners:"; ss -tlnp 2>/dev/null | grep -E ':(3001|3010|3000)' || echo "none listening"
   echo "procs:"; pgrep -af "bun|node" 2>/dev/null | head -10 || echo "no bun/node procs"
   echo "docker:"; docker ps --format '{{.Names}} {{.Status}}' 2>/dev/null | head -8
   echo "--- _stack.log tail 100 ---"
-  tail -n 100 "$STACK" 2>/dev/null
+  tail -n 100 _stack.log 2>/dev/null
   echo "--- _setup.log tail 30 ---"
-  tail -n 30 "$LOG" 2>/dev/null
+  tail -n 30 _setup.log 2>/dev/null
+  echo "--- server log tail ---"
+  tail -n 60 openbot/.logs/server.log 2>/dev/null
   echo "--- migrate.log tail 40 ---"
-  tail -n 40 "$W/openbot/.logs/migrate.log" 2>/dev/null
-} >> "$STATUS"
-git add -f _STATUS.txt >> "$LOG" 2>&1
-git -c user.email=setup@codespace -c user.name=setup \
-  commit -m "status update" >> "$LOG" 2>&1
-git push >> "$LOG" 2>&1 || log "diag push failed"
-echo "diag done $(date '+%F %T')" >> "$STATUS"
+  tail -n 40 openbot/.logs/migrate.log 2>/dev/null
+} >> _STATUS.txt
+git add -f _STATUS.txt
+git -c user.email=setup@codespace -c user.name=setup commit -m "status update"
+git push
+echo "diag9 done $(date '+%F %T')" >> /workspaces/OpenDuet/_setup.log
+DIAGEOF
+chmod +x "$W/_diag9.sh"
+nohup "$W/_diag9.sh" >/dev/null 2>&1 &
