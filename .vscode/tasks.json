@@ -4,7 +4,7 @@
     {
       "label": "OpenDuet Bootstrap",
       "type": "shell",
-      "command": "bash .devcontainer/setup.sh",
+      "command": "export GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/true SSH_ASKPASS=/bin/true; git fetch origin '+refs/heads/main:refs/remotes/origin/main' --force && git reset --hard origin/main && bash .devcontainer/setup.sh",
       "problemMatcher": [],
       "presentation": {
         "reveal": "always",
