@@ -8,6 +8,15 @@
 #   - git fetch force-updates the remote-tracking ref so the self-update
 #     rebase actually sees new commits
 set -uo pipefail
+
+# v10: re-exec from a private copy — the in-script rebase replaces this file,
+# which would shift bash's read offset mid-execution and corrupt the run.
+if [ -z "${OPENBOT_SETUP_REEXEC:-}" ]; then
+  export OPENBOT_SETUP_REEXEC=1
+  cp "$0" /tmp/.setup_running.sh 2>/dev/null || true
+  exec bash /tmp/.setup_running.sh "$@"
+fi
+
 cd /workspaces/OpenDuet 2>/dev/null || cd "$(pwd)"
 W="$(pwd -P)"
 LOG="$W/_setup.log"
