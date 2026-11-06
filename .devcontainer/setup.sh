@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# OpenDuet Codespace bootstrap — production mode + Cloudflare quick tunnel. (v5)
+# OpenDuet Codespace bootstrap — production mode + Cloudflare quick tunnel. (v6)
 #
-# v5 changes:
-#   - secrets: merge from env vars every run; private-repo clone with error
-#     reporting + gh api fallback; final per-key summary in _STATUS.txt
-#   - tunnel: log cloudflared version; fuller log tail on failure
-#   - db: one-time volume reset to fix "Migrations did not apply"
+# v6 changes:
+#   - secrets clone is strictly non-interactive (GIT_TERMINAL_PROMPT=0,
+#     GIT_ASKPASS disabled, timeout 90s) — v5 hung forever waiting for
+#     credentials in the task terminal
+#   - git fetch force-updates the remote-tracking ref so the self-update
+#     rebase actually sees new commits
 set -uo pipefail
 cd /workspaces/OpenDuet 2>/dev/null || cd "$(pwd)"
 W="$(pwd -P)"
@@ -18,7 +19,8 @@ log(){ echo "[$(date +%T)] $*" >> "$LOG"; }
 
 # Always take the newest bootstrap from GitHub before doing anything. Local
 # status-only commits are expendable: rebase them on, or drop them and reset.
-git fetch origin main >> "$LOG" 2>&1 || log "git fetch failed (continuing offline)"
+git fetch origin '+refs/heads/main:refs/remotes/origin/main' --force >> "$LOG" 2>&1 \
+  || log "git fetch failed (continuing offline)"
 if git rev-parse -q --verify origin/main >/dev/null 2>&1; then
   git rebase origin/main >> "$LOG" 2>&1 || {
     log "rebase failed; resetting tracked files to origin/main"
@@ -114,7 +116,9 @@ for k in OPENAI_API_KEY INTELLIGENCE_API_KEY CPK_INTELLIGENCE_API_KEY CPK_TELEME
 done
 
 # 4b. secrets from private repo openduet-env (file: secrets.env), with gh fallback
-if git clone --depth 1 -q https://github.com/ASPIS2004/openduet-env.git /tmp/envrepo 2>/tmp/clone_err; then
+# Non-interactive: never prompt for credentials, never hang the task terminal.
+if GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/true SSH_ASKPASS=/bin/true \
+   timeout 90 git clone --depth 1 -q https://github.com/ASPIS2004/openduet-env.git /tmp/envrepo 2>/tmp/clone_err; then
   if [ -f /tmp/envrepo/secrets.env ]; then
     while IFS='=' read -r k v; do
       [ -z "$k" ] && continue
