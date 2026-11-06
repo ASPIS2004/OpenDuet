@@ -278,3 +278,111 @@ tunnel_url: none
 OpenDuet
 ========
 [2m1/4  Docker services[0m
+setup done 2026-11-06 09:12:44
+=== v8 diag 09:16:44 ===
+listeners:
+none listening
+procs:
+1097 bun agent-bot/src/index.ts
+1156 bun src/index.ts
+1162 bun src/index.ts
+1165 bun agent-langgraph/src/index.ts
+5443 sh /home/node/.vscode-remote/bin/6bab64e2d12b04d04c0d99c27ff166023efd1dda/bin/code-server --log trace --force-disable-user-env --server-data-dir /home/node/.vscode-remote --accept-server-license-terms --host 127.0.0.1 --port 0 --connection-token-file /home/node/.vscode-remote/data/Machine/.connection-token-6bab64e2d12b04d04c0d99c27ff166023efd1dda --extensions-download-dir /home/node/.vscode-remote/extensionsCache --start-server  --enable-remote-auto-shutdown --skip-requirements-check
+5452 /vscode/bin/linux-x64/6bab64e2d12b04d04c0d99c27ff166023efd1dda/node /vscode/bin/linux-x64/6bab64e2d12b04d04c0d99c27ff166023efd1dda/out/server-main.js --log trace --force-disable-user-env --server-data-dir /home/node/.vscode-remote --accept-server-license-terms --host 127.0.0.1 --port 0 --connection-token-file /home/node/.vscode-remote/data/Machine/.connection-token-6bab64e2d12b04d04c0d99c27ff166023efd1dda --extensions-download-dir /home/node/.vscode-remote/extensionsCache --start-server  --enable-remote-auto-shutdown --skip-requirements-check
+5496 /vscode/bin/linux-x64/6bab64e2d12b04d04c0d99c27ff166023efd1dda/node --dns-result-order=ipv4first /vscode/bin/linux-x64/6bab64e2d12b04d04c0d99c27ff166023efd1dda/out/bootstrap-fork --type=extensionHost --transformURIs --useHostProxy=false
+5579 /vscode/bin/linux-x64/6bab64e2d12b04d04c0d99c27ff166023efd1dda/node /vscode/bin/linux-x64/6bab64e2d12b04d04c0d99c27ff166023efd1dda/out/bootstrap-fork --type=agentHost --logsPath /home/node/.vscode-remote/data/logs/20261106T091556 --user-data-dir /home/node/.vscode-remote/data --telemetry-level all
+5580 /vscode/bin/linux-x64/6bab64e2d12b04d04c0d99c27ff166023efd1dda/node /vscode/bin/linux-x64/6bab64e2d12b04d04c0d99c27ff166023efd1dda/out/bootstrap-fork --type=fileWatcher
+5640 /vscode/bin/linux-x64/6bab64e2d12b04d04c0d99c27ff166023efd1dda/node_modules/@github/copilot-sdk-linux-x64/prebuilds/linux-x64/copilot-runtime --headless --no-auto-update --log-level info --stdio --no-auto-login
+docker:
+openduet-supervisor-1 Up 4 minutes (healthy)
+openduet-agent-computer-1 Up 4 minutes (healthy)
+openduet-agent-langgraph-1 Up 4 minutes (healthy)
+openduet-agent-bot-1 Up 4 minutes (healthy)
+openduet-postgres-1 Up 4 minutes (healthy)
+--- _stack.log tail 100 ---
+
+OpenDuet
+========
+[2m1/4  Docker services[0m
+[32m  agent-computer ready[0m
+[32m  agent-bot ready[0m
+[32m  agent-langgraph ready[0m
+[32m  coworker tables migrated[0m
+[32m  managed coworker endpoint: http://localhost:4201/ag-ui[0m
+[2m  This runtime key's project has the openbot Learning container. OpenBot assigns it as the default on start unless Admin → Automatic Learning has a saved setting.[0m
+[2m2/4  Server[0m
+[31m  server never answered as OpenBot on port 3001[0m
+[31m  Either it failed to start, or that port belongs to another process.[0m
+[31m  Log: /workspaces/OpenDuet/openbot/.logs/server.log[0m
+--- _setup.log tail 30 ---
+From https://github.com/ASPIS2004/OpenDuet
+   12ee1fe..6e7e596  main       -> origin/main
+error: cannot rebase: You have unstaged changes.
+error: Please commit or stash them.
+[09:01:49] rebase failed; resetting tracked files to origin/main
+HEAD is now at 6e7e596 setup v8: synchronous diagnostics
+[09:01:52] clone openduet-env FAILED: remote: Write access to repository not granted. fatal: unable to access 'https://github.com/ASPIS2004/openduet-env.git/': The requested URL returned error: 403 
+curl: (23) Failure writing output to destination
+[09:01:52] no tunnel URL; _tunnel.log says:
+tail: cannot open '/workspaces/OpenDuet/_tunnel.log' for reading: No such file or directory
+[main da4667b] status update
+ 1 file changed, 19 insertions(+)
+To https://github.com/ASPIS2004/OpenDuet
+   6e7e596..da4667b  main -> main
+[09:02:14] status pushed
+From https://github.com/ASPIS2004/OpenDuet
+   da4667b..9abea90  main       -> origin/main
+error: cannot rebase: You have unstaged changes.
+error: Please commit or stash them.
+[09:12:21] rebase failed; resetting tracked files to origin/main
+HEAD is now at 9abea90 setup v9: detached nohup diagnostics
+[09:12:23] clone openduet-env FAILED: remote: Write access to repository not granted. fatal: unable to access 'https://github.com/ASPIS2004/openduet-env.git/': The requested URL returned error: 403 
+curl: (23) Failure writing output to destination
+[09:12:23] no tunnel URL; _tunnel.log says:
+tail: cannot open '/workspaces/OpenDuet/_tunnel.log' for reading: No such file or directory
+[main 72eed0e] status update
+ 1 file changed, 19 insertions(+)
+To https://github.com/ASPIS2004/OpenDuet
+   9abea90..72eed0e  main -> main
+[09:12:44] status pushed
+--- migrate.log tail 40 ---
+#28 [runtime 10/14] COPY shared shared
+#28 CACHED
+
+#29 [runtime  9/14] COPY server server
+#29 CACHED
+
+#30 [runtime 12/14] COPY examples examples
+#30 CACHED
+
+#31 [runtime  6/14] COPY --from=deps /app/bun.lock bun.lock
+#31 CACHED
+
+#32 [runtime  7/14] COPY --from=deps /app/server/node_modules server/node_modules
+#32 CACHED
+
+#33 [deps  6/11] COPY app/package.json app/package.json
+#33 CACHED
+
+#34 [deps 10/11] COPY toolkit/package.json toolkit/package.json
+#34 CACHED
+
+#35 [deps  4/11] COPY tsconfig.base.json tsconfig.base.json
+#35 CACHED
+
+#36 [runtime 14/14] WORKDIR /app/server
+#36 CACHED
+
+#37 exporting to image
+#37 exporting layers done
+#37 exporting manifest sha256:10ea30cf36ecd988a4b41c7ae476ed89846b82b4ff76df67a7429cc5beda95bd done
+#37 exporting config sha256:bf38f2edd15babf588bcdbcfb6e9ee3aa43ec892da480623eea5fc7e6fd44209 done
+#37 exporting attestation manifest sha256:f067a2a3e13e79160ffb4775dbfea6dabd01d153da652b4c4e650919e04bb1d1 0.0s done
+#37 exporting manifest list sha256:4dfb39a7f337136c5a3bcedf62543faad37cf8b813dea0848e77072c0e82d2a4 0.0s done
+#37 naming to docker.io/library/openduet-server:latest done
+#37 unpacking to docker.io/library/openduet-server:latest done
+#37 DONE 0.2s
+
+#38 resolving provenance for metadata file
+#38 DONE 0.0s
+{"type":"migrations-applied","status":"ok"}
