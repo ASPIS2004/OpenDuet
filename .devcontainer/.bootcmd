@@ -1,9 +1,9 @@
-echo "=== OPENBOT ENV NOW ==="
-grep -nE "PUBLIC_URL|APP_URL|TRUSTED|SINGLE" openbot/.env
-echo "=== SERVER LOG TAIL ==="
-tail -c 1200 openbot/.logs/server.log 2>/dev/null
-echo ""
-echo "=== STACK LOG TAIL ==="
-tail -n 20 _stack.log 2>/dev/null
-echo "=== LISTEN ==="
-ss -tlnp 2>/dev/null | grep 3001 || echo NO_LISTEN
+echo "=== BEFORE ==="
+ls -la .env openbot/.env 2>/dev/null
+mv -f .env .env.root.bak 2>/dev/null && echo "root .env moved to .env.root.bak"
+ls -la .env 2>/dev/null || echo "root .env gone"
+echo "=== RESTART STACK ==="
+pkill -f "scripts/start.sh" 2>/dev/null
+sleep 1
+( setsid bash scripts/start.sh >> _stack.log 2>&1 < /dev/null & )
+echo relaunched
