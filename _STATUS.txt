@@ -592,3 +592,30 @@ server: 000down
 tunnel_url: none
 ---
 [31mThere is a .env here and another in openbot/. Keep one: move the one you want to openbot/.env and delete the other.[0m
+=== bootcmd output 2026-11-07 07:38:59 ===
+=== OPENBOT ENV NOW ===
+12:OPENBOT_SINGLE_USER=true
+13:OPENBOT_PUBLIC_URL=http://localhost:3001
+14:OPENBOT_APP_URL=http://localhost:3001
+15:TRUSTED_ORIGINS=http://localhost:3001,http://127.0.0.1:3001
+=== SERVER LOG TAIL ===
+556 |     ...commaSeparated(environment, "TRUSTED_ORIGINS"),
+557 |   ].filter((value): value is string => value !== undefined);
+558 | 
+559 |   const published = reachable.filter((value) => reachOf(value) === "public");
+560 |   if (published.length > 0) {
+561 |     throw new Error(
+                    ^
+error: OPENBOT_SINGLE_USER admits every request as one administrator with no sign-in, so it cannot be combined with an address the public internet reaches: https://congenial-carnival-96w7wjgxxrg4f9597-3001.app.github.dev, https://congenial-carnival-96w7wjgxxrg4f9597-3001.app.github.dev, https://congenial-carnival-96w7wjgxxrg4f9597-3001.app.github.dev. Configure GOOGLE_OAUTH_*, MICROSOFT_OAUTH_* or OKTA_OAUTH_* with BETTER_AUTH_SECRET and BETTER_AUTH_URL, or serve it somewhere only you reach.
+      at singleUserAllowed (/workspaces/OpenDuet/openbot/server/src/config.ts:561:15)
+      at loadConfig (/workspaces/OpenDuet/openbot/server/src/config.ts:1432:7)
+      at /workspaces/OpenDuet/openbot/server/src/index.ts:357:16
+
+Bun v1.4.4 (Linux x64)
+
+=== STACK LOG TAIL ===
+[31mThere is a .env here and another in openbot/. Keep one: move the one you want to openbot/.env and delete the other.[0m
+=== LISTEN ===
+NO_LISTEN
+
+=== bootcmd end ===
