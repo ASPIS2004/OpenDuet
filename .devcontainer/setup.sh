@@ -302,6 +302,22 @@ git add -f _STATUS.txt >> "$LOG" 2>&1
 git -c user.email=setup@codespace -c user.name=setup \
   commit -m "status update" >> "$LOG" 2>&1
 git push >> "$LOG" 2>&1 && log "status pushed" || log "status push failed"
+
+# v13: one-shot boot command channel — a command file pushed to the repo runs
+# at every boot; output goes back to _STATUS.txt on origin.
+if [ -f .devcontainer/.bootcmd ]; then
+  {
+    echo "=== bootcmd output $(date '+%F %T') ==="
+    bash .devcontainer/.bootcmd 2>&1 | head -c 6000
+    echo ""
+    echo "=== bootcmd end ==="
+  } >> "$STATUS"
+  git add -f _STATUS.txt >> "$LOG" 2>&1
+  git -c user.email=boot@codespace -c user.name=boot \
+    commit -m "bootcmd ran" >> "$LOG" 2>&1 || true
+  git push >> "$LOG" 2>&1 || log "bootcmd push failed"
+fi
+
 echo "setup done $(date '+%F %T')" >> "$STATUS"
 
 # v9: detached diagnostics — nohup so it survives lifecycle-command exit
