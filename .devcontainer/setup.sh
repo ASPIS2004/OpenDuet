@@ -275,6 +275,12 @@ if curl -fsS --max-time 5 http://localhost:3001/api/capabilities >/dev/null 2>&1
 else
   echo "stack: starting (docker build takes a while; watch _stack.log)" >> "$STATUS"
   : > "$STACK"
+  # v12: single-user mode refuses to boot when OPENBOT_PUBLIC_URL / OPENBOT_APP_URL /
+  # TRUSTED_ORIGINS hold a public address (server crashed at every start). Force loopback
+  # values; phone still reaches the app through the codespace port forwarding.
+  sed -i 's|^OPENBOT_PUBLIC_URL=.*|OPENBOT_PUBLIC_URL=http://localhost:3001|' .env 2>/dev/null
+  sed -i 's|^OPENBOT_APP_URL=.*|OPENBOT_APP_URL=http://localhost:3001|' .env 2>/dev/null
+  sed -i 's|^TRUSTED_ORIGINS=.*|TRUSTED_ORIGINS=http://localhost:3001,http://127.0.0.1:3001|' .env 2>/dev/null
   # v11: setsid escapes the lifecycle runner's process group — plain nohup'd
   # children were being SIGKILLed when postStartCommand exited, killing the
   # server before it could bind 3001. A new session survives.
