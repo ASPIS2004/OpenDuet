@@ -1,0 +1,18 @@
+echo "=== ENV VARS in .env ==="
+grep -nE "PUBLIC_URL|APP_URL|TRUSTED|SINGLE" .env || echo "none in .env"
+echo "=== printenv ==="
+printenv | grep -E "PUBLIC_URL|APP_URL|TRUSTED|SINGLE" || echo "none in process env"
+echo "=== SERVER LOG HEAD ==="
+head -c 900 openbot/.logs/server.log 2>/dev/null
+echo ""
+echo "=== APPLY FIX ==="
+sed -i "s|^OPENBOT_PUBLIC_URL=.*|OPENBOT_PUBLIC_URL=http://localhost:3001|" .env
+sed -i "s|^OPENBOT_APP_URL=.*|OPENBOT_APP_URL=http://localhost:3001|" .env
+sed -i "s|^TRUSTED_ORIGINS=.*|TRUSTED_ORIGINS=http://localhost:3001,http://127.0.0.1:3001|" .env
+if grep -q "^OPENBOT_SINGLE_USER=" .env; then sed -i "s|^OPENBOT_SINGLE_USER=.*|OPENBOT_SINGLE_USER=true|"; else echo "OPENBOT_SINGLE_USER=true" >> .env; fi
+echo "fix applied"
+echo "=== RESTART STACK ==="
+pkill -f "scripts/start.sh" 2>/dev/null
+sleep 1
+( setsid bash scripts/start.sh >> _stack.log 2>&1 < /dev/null & )
+echo "relaunched"
