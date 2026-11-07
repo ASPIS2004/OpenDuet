@@ -275,7 +275,10 @@ if curl -fsS --max-time 5 http://localhost:3001/api/capabilities >/dev/null 2>&1
 else
   echo "stack: starting (docker build takes a while; watch _stack.log)" >> "$STATUS"
   : > "$STACK"
-  nohup bash scripts/start.sh >> "$STACK" 2>&1 &
+  # v11: setsid escapes the lifecycle runner's process group — plain nohup'd
+  # children were being SIGKILLed when postStartCommand exited, killing the
+  # server before it could bind 3001. A new session survives.
+  setsid nohup bash scripts/start.sh >> "$STACK" 2>&1 < /dev/null &
 fi
 
 # ---------------------------------------------------------------------------
@@ -320,4 +323,4 @@ git push
 echo "diag9 done $(date '+%F %T')" >> /workspaces/OpenDuet/_setup.log
 DIAGEOF
 chmod +x "$W/_diag9.sh"
-nohup "$W/_diag9.sh" >/dev/null 2>&1 &
+setsid nohup "$W/_diag9.sh" >/dev/null 2>&1 < /dev/null &
