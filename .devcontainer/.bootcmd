@@ -1,18 +1,23 @@
-echo "=== ENV VARS in .env ==="
-grep -nE "PUBLIC_URL|APP_URL|TRUSTED|SINGLE" .env || echo "none in .env"
-echo "=== printenv ==="
-printenv | grep -E "PUBLIC_URL|APP_URL|TRUSTED|SINGLE" || echo "none in process env"
-echo "=== SERVER LOG HEAD ==="
-head -c 900 openbot/.logs/server.log 2>/dev/null
+echo "=== ROOT ENV URL VARS ==="
+grep -nE "PUBLIC_URL|APP_URL|TRUSTED|SINGLE" .env || echo none
+echo "=== OPENBOT ENV URL VARS ==="
+grep -nE "PUBLIC_URL|APP_URL|TRUSTED|SINGLE" openbot/.env 2>/dev/null || echo none
+echo "=== OPENBOT ENV KEY COUNT ==="
+grep -cE "^(OPENAI_API_KEY|INTELLIGENCE_API_KEY|CPK_)" openbot/.env 2>/dev/null || echo 0
+echo "=== FIX openbot/.env ==="
+sed -i "s|^OPENBOT_PUBLIC_URL=.*|OPENBOT_PUBLIC_URL=http://localhost:3001|" openbot/.env 2>/dev/null
+sed -i "s|^OPENBOT_APP_URL=.*|OPENBOT_APP_URL=http://localhost:3001|" openbot/.env 2>/dev/null
+sed -i "s|^TRUSTED_ORIGINS=.*|TRUSTED_ORIGINS=http://localhost:3001,http://127.0.0.1:3001|" openbot/.env 2>/dev/null
+if grep -q "^OPENBOT_SINGLE_USER=" openbot/.env; then sed -i "s|^OPENBOT_SINGLE_USER=.*|OPENBOT_SINGLE_USER=true|" openbot/.env; else echo "OPENBOT_SINGLE_USER=true" >> openbot/.env; fi
+for k in OPENAI_API_KEY INTELLIGENCE_API_KEY CPK_INTELLIGENCE_API_KEY CPK_TELEMETRY_ID; do
+  grep -q "^$k=" openbot/.env 2>/dev/null || grep "^$k=" .env >> openbot/.env 2>/dev/null
+done
+echo "synced"
+echo "=== SERVER LOG HEAD (old crash) ==="
+head -c 500 openbot/.logs/server.log 2>/dev/null
 echo ""
-echo "=== APPLY FIX ==="
-sed -i "s|^OPENBOT_PUBLIC_URL=.*|OPENBOT_PUBLIC_URL=http://localhost:3001|" .env
-sed -i "s|^OPENBOT_APP_URL=.*|OPENBOT_APP_URL=http://localhost:3001|" .env
-sed -i "s|^TRUSTED_ORIGINS=.*|TRUSTED_ORIGINS=http://localhost:3001,http://127.0.0.1:3001|" .env
-if grep -q "^OPENBOT_SINGLE_USER=" .env; then sed -i "s|^OPENBOT_SINGLE_USER=.*|OPENBOT_SINGLE_USER=true|"; else echo "OPENBOT_SINGLE_USER=true" >> .env; fi
-echo "fix applied"
 echo "=== RESTART STACK ==="
 pkill -f "scripts/start.sh" 2>/dev/null
 sleep 1
 ( setsid bash scripts/start.sh >> _stack.log 2>&1 < /dev/null & )
-echo "relaunched"
+echo relaunched
