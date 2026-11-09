@@ -869,3 +869,13 @@ server: 000down
 tunnel_url: none
 ---
 [31mThere is a .env here and another in openbot/. Keep one: move the one you want to openbot/.env and delete the other.[0m
+=== bootcmd output 2026-11-09 10:46:39 ===
+=== BEFORE ===
+-rw------- 1 node node 1369 Nov  9 10:46 .env
+-rw------- 1 node node 1369 Nov  7 07:32 openbot/.env
+root .env moved to .env.root.bak
+root .env gone
+=== RESTART STACK ===
+relaunched
+
+=== bootcmd end ===
