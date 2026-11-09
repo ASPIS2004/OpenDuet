@@ -749,3 +749,19 @@ root .env gone
 relaunched
 
 === bootcmd end ===
+run 2026-11-09 07:46:11
+codespace congenial-carnival-96w7wjgxxrg4f9597
+docker: ready
+bun: 1.4.4
+deps: present
+secrets: private repo clone FAILED: remote: Write access to repository not granted. fatal: unable to access 'https://github.com/ASPIS2004/openduet-env.git/': The requested URL returned error: 403 
+secrets: ALL SET
+app: dist present
+cloudflared: DOWNLOAD FAILED
+tunnel: FAILED (falling back to codespace port URL)
+--- _tunnel.log tail ---
+stack: starting (docker build takes a while; watch _stack.log)
+server: 000down
+tunnel_url: none
+---
+[31mThere is a .env here and another in openbot/. Keep one: move the one you want to openbot/.env and delete the other.[0m
